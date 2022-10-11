@@ -219,3 +219,27 @@ def render_layers(x, y):
     render_observation(x)
 
     plt.tight_layout()
+
+
+def render_maps(x, gt, pred):
+    def style_ax():
+        plt.grid(b=None)
+        plt.xticks([])
+        plt.yticks([])
+
+    fig = plt.figure(6 * (x.shape[0] / 3 + 2), 6)
+    gs = mpl.gridspec.GridSpec(3, x.shape[0])
+
+    for i in range(x.shape[0]):
+        plt.subplot(gs[0, i // 3])
+        plt.imshow(x[i], origin='lower', vmin=0, vmax=1)
+        style_ax()
+
+    plt.subplot(gs[1, 0])
+    plt.imshow(gt[0], origin='lower', vmin=0, vmax=1)
+    style_ax()
+
+    plt.subplot(gs[2, 0])
+    plt.imshow(pred[0], origin='lower', vmin=0, vmax=1)
+    style_ax()
+    plt.tight_layout()

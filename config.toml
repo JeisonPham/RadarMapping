@@ -4,7 +4,7 @@ api_key = "KPeUsRqhiz6nAFBQYCx9o8vb1"
 workspace = "jeisontriton"
 
 [train]
-model_location = "Planning/Models"
+model_location = "Model Output"
 use_resnet = false
 disable=false
 batch_size = 8

@@ -7,24 +7,37 @@ from MapDataset import MapDataset
 import os
 import json
 from datetime import datetime
+import matplotlib.pyplot as plt
+import util
 
 
-def run_epoch(dataloader, model, loss_fn, opt, device, eval=False):
-    loss = 0
+def train_epoch(epoch, dataloader, model, optimizer, loss_fn, device):
+    model.train()
+    total_loss = 0
     for batchii, (x, y) in enumerate(dataloader):
-        if not eval:
-            opt.zero_grad()
+        optimizer.zero_grad()
+        output = model(x.to(device))
+        loss = loss_fn(y.to(device), output)
+        loss.backward()
+        optimizer.step()
 
-        pred = model(x.to(device))
-        loss_batch = loss_fn(pred, y.to(device))
+        total_loss += loss.detach().item()
 
-        if not eval:
-            loss_batch.backward()
-            opt.step()
+        if batchii % 50 == 0:
+            print(f"Train epoch: [{epoch}/{batchii}] \t Loss: {loss.item():.6f}")
+    return total_loss / (batchii + 1)
 
-        loss += loss_batch.detach().item()
 
-    return loss / (batchii + 1)
+def test_epoch(epoch, dataloader, model, loss_fn, device):
+    model.eval()
+    test_loss = 0
+    with torch.no_grad():
+        for batchii, (x, y) in enumerate(dataloader):
+            output = model(x.to(device))
+            loss = loss_fn(output, y.to(device))
+            test_loss += loss.detach().item()
+
+    return x, y, output, test_loss / (batchii + 1)
 
 
 def train(params, device):
@@ -60,16 +73,19 @@ def train(params, device):
     with experiment.train():
         for epoch in range(int(epochs)):
             print(f"Starting Epoch {epoch}")
-            train_loss = run_epoch(train_dataloader, model, loss_fn, opt, device)
+            train_loss = train_epoch(epoch, train_dataloader, model, opt, loss_fn, device)
             experiment.log_curve("Training_Loss", train_loss, epoch)
 
             if epoch % 5 == 0:
-                model.eval()
-                with torch.no_grad():
-                    test_loss = run_epoch(test_dataloader, model, loss_fn, opt, device, True)
+                x, gt, pred, test_loss = test_epoch(epoch, test_dataloader, model, loss_fn, device)
                 experiment.log_curve("Testing Loss", test_loss, epoch)
-                model.train()
 
+                for i, (xi, gti, predi) in enumerate(zip(x, gt, pred)):
+                    util.render_maps(xi, gti, predi)
+                    experiment.log_figure(figure_name=f"Maps for {epoch}_{i}", figure=plt)
+                    plt.clf()
+
+                model.train()
                 scheduler.step(test_loss)
                 experiment.log_metric("train/lr", opt.param_groups[0]['lr'], step=epoch)
 
@@ -87,3 +103,6 @@ if __name__ == "__main__":
     with open("config.toml", "r") as file:
         params = toml.load(file)
     print(params)
+
+    device = torch.device('cuda' if params['train']['device'] != 0 and torch.cuda.is_available() else 'cpu')
+    train(params, device)

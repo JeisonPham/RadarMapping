@@ -1,5 +1,6 @@
 import torch.utils.data as torchdata
 import pandas as pd
+from dataset_utils import collab_dataset
 from shapely.geometry import Polygon, Point
 import os
 import json
@@ -27,15 +28,16 @@ class MapDataset(torchdata.Dataset):
         with open(polygon_file, "r") as file:
             self.polygon = json.load(file)
 
-        # with open(os.path.join(radar_dataset, "training_txt_files", bev_folder_name, "valid_files_train.txt"),
-        #           'r') as file:
-        #     training = file.readlines()
-        #
-        # with open(os.path.join(radar_dataset, "training_txt_files", bev_folder_name, "valid_files_test.txt"),
-        #           'r') as file:
-        #     testing = file.readlines()
-        training = ["plot_data_veh129_382", "plot_data_veh115_395", "plot_data_veh122_396"]
-        testing = ["plot_data_veh129_382", "plot_data_veh115_395", "plot_data_veh122_396"]
+        self.collab_dataset = collab_dataset(radar_dataset, gt_folder_name, bev_folder_name)
+        with open(os.path.join(radar_dataset, "training_txt_files", bev_folder_name, "valid_files_train.txt"),
+                  'r') as file:
+            training = file.readlines()
+
+        with open(os.path.join(radar_dataset, "training_txt_files", bev_folder_name, "valid_files_test.txt"),
+                  'r') as file:
+            testing = file.readlines()
+        # training = ["plot_data_veh129_382", "plot_data_veh115_395", "plot_data_veh122_396"]
+        # testing = ["plot_data_veh129_382", "plot_data_veh115_395", "plot_data_veh122_396"]
         self.radar_data = training + testing
         self.ixes = self.get_ixes()
 
@@ -47,6 +49,15 @@ class MapDataset(torchdata.Dataset):
         return ixes
 
     def render(self, name, time):
+        extrinsic_ego2world = self.collab_dataset.get_extrinsic(timestamp=time, veh_id=name)
+        images = []
+        for i in range(2):
+            img = self.collab_dataset
+            rad_img_down, _ = self.collab_dataset.resize(img, None, self.nx)
+            images.append(rad_img_down[:, :, 0] / 255.)
+            images.append(rad_img_down[:, :, 1] / 255.)
+            images.append(rad_img_down[:, :, 2] / 255.)
+
         data = self.df[(self.df['vehicle_id'] == name) & (self.df['timestep_time'] == time)]
         x = data['vehicle_x']
         y = data['vehicle_y']
@@ -123,6 +134,7 @@ class MapDataset(torchdata.Dataset):
                     cv2.polylines(image, [pts], isClosed=False, color=1.0)
 
         draw_polygon(polygon_list['junction'], map_img, fill=True)
+        junction_map = map_img.copy()
         draw_polygon(polygon_list['lane'], map_img, fill=True)
 
         # road_div = np.zeros((self.nx, self.ny))
@@ -131,7 +143,7 @@ class MapDataset(torchdata.Dataset):
 
         # lane_div = np.zeros((self.nx, self.ny))
         # x = np.stack([map_img, lane_div, road_div, obj_img, center_img])
-        return map_img[np.newaxis, :, :]
+        return np.stack(images), map_img[np.newaxis, :, :]
 
     def __getitem__(self, index):
         name, time = self.ixes[index]
