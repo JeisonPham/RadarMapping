@@ -1,0 +1,24 @@
+[comet]
+project_name = "Train_Planner_Map"
+api_key = "KPeUsRqhiz6nAFBQYCx9o8vb1"
+workspace = "jeisontriton"
+
+[train]
+model_location = "Planning/Models"
+use_resnet = false
+disable=false
+batch_size = 8
+num_workers = 10
+device=1
+
+[train.dataset_params]
+car_file = "Data/downtown_SD_10thru_50count_with_cad_id.csv"
+polygon_file = "Data/polygons.json"
+radar_dataset = "../ehdd_8t1/collab_radar_data/"
+
+
+
+[train.hyper_params]
+"lr"= 0.001
+"weight_decay"= 0.00001
+"epoch"= 5e5
