@@ -5,6 +5,8 @@ from shapely.geometry import Polygon, Point
 import os
 import json
 import numpy as np
+from glob import glob
+import re
 
 from util import *
 
@@ -13,7 +15,9 @@ bev_folder_name = "downtown_SD_10thru_50count_80m_doppler_tuned"
 
 
 class MapDataset(torchdata.Dataset):
-    def __init__(self, car_file, polygon_file, radar_dataset="", *args, **kwargs):
+    def __init__(self, car_file, polygon_file, radar_dataset="", time_window=1, *args, **kwargs):
+        self.time_window = time_window
+        
         df = pd.read_csv(car_file)
         if df["vehicle_angle"].max() > 2 * np.pi or df["vehicle_angle"].min() < 0:
             df["vehicle_angle"] = df["vehicle_angle"] * np.pi / 180
@@ -24,10 +28,15 @@ class MapDataset(torchdata.Dataset):
         self.dx, self.bx, (self.nx, self.ny) = get_grid([4, -40,
                                                          84, 40],
                                                         [80 / 128, 80 / 128])
+                                                        
+        print(self.nx, self.ny)
 
         with open(polygon_file, "r") as file:
             self.polygon = json.load(file)
-
+            
+        self.files = glob(f"{radar_dataset}/radar_bev_images/{bev_folder_name}/*.jpg")
+        
+        self.radar_dataset = radar_dataset
         self.collab_dataset = collab_dataset(radar_dataset, gt_folder_name, bev_folder_name)
         with open(os.path.join(radar_dataset, "training_txt_files", bev_folder_name, "valid_files_train.txt"),
                   'r') as file:
@@ -40,55 +49,73 @@ class MapDataset(torchdata.Dataset):
         # testing = ["plot_data_veh129_382", "plot_data_veh115_395", "plot_data_veh122_396"]
         self.radar_data = training + testing
         self.ixes = self.get_ixes()
+        
+    def exists(self, name, time):
+        target_path = f"{self.radar_dataset}/radar_bev_images/{bev_folder_name}/plot_data_{name}_{time}.jpg"
+        if os.path.exists(target_path):
+            return True
+        print(target_path)
+        return False
 
     def get_ixes(self):
         ixes = []
         for data in self.radar_data:
-            _, _, name, time = data.split("_")
-            ixes.append((name, int(time)))
+            name, time = re.search(r"plot_data_(veh\d+)_(\d+)", data).groups()
+            time = int(time)
+            
+                
+            ixes.append((name, time))
+              
+    
         return ixes
+        
+    def __len__(self):
+      return len(self.ixes)
 
     def render(self, name, time):
-        extrinsic_ego2world = self.collab_dataset.get_extrinsic(timestamp=time, veh_id=name)
+        extrinsic_ego2world = self.collab_dataset.get_extrinsic(timestamp=time, veh_id=int(name[3:]))
         images = []
-        for i in range(2):
-            img = self.collab_dataset
-            rad_img_down, _ = self.collab_dataset.resize(img, None, self.nx)
+        for i in range(self.time_window):
+            img = self.collab_dataset.get_image(timestamp=time - i, veh_id=int(name[3:]))
+            if img is None:
+                rad_img_down = np.zeros((self.nx, self.ny, 3)).astype(float)
+            else:
+                rad_img_down, _ = self.collab_dataset.resize(img, None, self.nx)
             images.append(rad_img_down[:, :, 0] / 255.)
             images.append(rad_img_down[:, :, 1] / 255.)
             images.append(rad_img_down[:, :, 2] / 255.)
 
         data = self.df[(self.df['vehicle_id'] == name) & (self.df['timestep_time'] == time)]
-        x = data['vehicle_x']
-        y = data['vehicle_y']
-        angle = data['vehicle_angle']
+        x = data['vehicle_x'].values
+        y = data['vehicle_y'].values
+        angle = data['vehicle_angle'].values
 
         others = self.df[self.df['timestep_time'] == time]
-        pos = others[["vehicle_x", "vehicle_y"]].values - np.array(x, y)
+        pos = others[["vehicle_x", "vehicle_y"]].values - np.array([x, y]).flatten()
         mask = np.linalg.norm(pos, axis=1) < 100
 
         others = others[mask]
 
         center = np.array([x, y, np.cos(angle), np.sin(angle)]).flatten()
-        # other_x = others['vehicle_x'].values.reshape(-1, 1)
-        # other_y = others['vehicle_y'].values.reshape(-1, 1)
-        # other_angle = others['vehicle_angle'].values.reshape(-1, 1)
-        #
-        # objs = np.hstack([other_x, other_y, np.cos(other_angle), np.sin(other_angle)])
-        # if len(objs) == 0:
-        #     lobjs = np.zeros((0, 4))
-        # else:
-        #     lobjs = objects2frame(objs[np.newaxis, :, :], center)[0]
-        #
-        # # create image of other objects
-        # obj_img = np.zeros((self.nx, self.ny))
-        # for box in lobjs:
-        #     pts = get_corners(box, [1.73, 4.084][::-1])
-        #     pts = np.round(
-        #         (pts - self.bx[:2] + self.dx[:2] / 2.) / self.dx[:2]
-        #     ).astype(np.int32)
-        #     pts[:, [1, 0]] = pts[:, [0, 1]]
-        #     cv2.fillPoly(obj_img, [pts], 1.0)
+        other_x = others['vehicle_x'].values.reshape(-1, 1)
+        other_y = others['vehicle_y'].values.reshape(-1, 1)
+        other_angle = others['vehicle_angle'].values.reshape(-1, 1)
+        
+        objs = np.hstack([other_x, other_y, np.cos(other_angle), np.sin(other_angle)])
+        if len(objs) == 0:
+            lobjs = np.zeros((0, 4))
+        else:
+            lobjs = objects2frame(objs[np.newaxis, :, :], center)[0]
+        
+        # create image of other objects
+        obj_img = np.zeros((self.nx, self.ny))
+        for box in lobjs:
+            pts = get_corners(box, [1.73, 4.084][::-1])
+            pts = np.round(
+             (pts - self.bx[:2] + self.dx[:2] / 2.) / self.dx[:2]
+            ).astype(np.int32)
+            pts[:, [1, 0]] = pts[:, [0, 1]]
+            cv2.fillPoly(obj_img, [pts], 1.0)
 
         # create image of ego
         center_img = np.zeros((self.nx, self.ny))
@@ -143,7 +170,7 @@ class MapDataset(torchdata.Dataset):
 
         # lane_div = np.zeros((self.nx, self.ny))
         # x = np.stack([map_img, lane_div, road_div, obj_img, center_img])
-        return np.stack(images), map_img[np.newaxis, :, :]
+        return np.stack(images), np.stack([map_img, junction_map, obj_img])
 
     def __getitem__(self, index):
         name, time = self.ixes[index]

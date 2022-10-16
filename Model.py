@@ -47,7 +47,6 @@ class MapBackBone(nn.Module):
         self.avgpool1 = nn.AvgPool2d(3, stride=2, padding=1)
         self.avgpool2 = nn.AvgPool2d(3, stride=2, padding=1)
 
-        self.upsample = nn.Upsample((H // 4, W // 4))
 
     def forward(self, x):
         x1 = self.layer1(x)
@@ -59,8 +58,8 @@ class MapBackBone(nn.Module):
         x22 = torch.cat([x11, x2], 1)
         x22 = self.avgpool2(x22)
 
-        x4 = self.upsample(x4)
-        x33 = torch.cat([x22, x3, x4], 1)
+        x44 = F.interpolate(x4, size=x22.shape[2:])
+        x33 = torch.cat([x22, x3, x44], 1)
 
         return self.final(x33), x1, x2
 
@@ -85,6 +84,8 @@ class MappingNetwork(nn.Module):
         )
 
         self.final = nn.Conv2d(128, output, 3, 1)
+        self.H = H
+        self.W = W
 
     def forward(self, C, C1, C2):
         x1 = self.layer1(C)
@@ -98,11 +99,12 @@ class MappingNetwork(nn.Module):
         x7 = self.layer3(x6)
         x8 = self.final(x7)
 
-        return x8
+        return torch.sigmoid(F.interpolate(x8, size=(self.W, self.H)))
 
 
 class MapModel(nn.Module):
     def __init__(self, cin, cout, H=256, W=256):
+        super(MapModel, self).__init__()
         self.backbone = MapBackBone(cin, H, W)
         self.header = MappingNetwork(cout, H, W)
 
@@ -112,12 +114,9 @@ class MapModel(nn.Module):
 
 
 if __name__ == "__main__":
-    x = torch.randn(1, 5, 256, 256)
-    net = MapBackBone(5)
+    x = torch.randn(8, 5, 128, 128)
+    net = MapModel(5, 1)
     net.train()
 
-    x, x1, x2 = net(x)
-    net2 = MappingNetwork(1)
-    net2.train()
-    x = net2(x, x1, x2)
+    x = net(x)
     print(x.shape)

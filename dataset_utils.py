@@ -33,8 +33,12 @@ class collab_dataset():
     def get_image(self, timestamp, veh_id):
 
         veh_id = int(veh_id)
-        img = plt.imread(f"{self.base_path}/radar_bev_images/{self.bev_folder_name}/plot_data_veh{str(veh_id)}_{str(timestamp)}.jpg")
-        return np.array(img)
+        path = f"{self.base_path}/radar_bev_images/{self.bev_folder_name}/plot_data_veh{str(veh_id)}_{str(timestamp)}.jpg"
+        if os.path.exists(path):
+            img = plt.imread(path)
+            return np.array(img)
+        else:
+            return None
 
 
     def get_extrinsic(self, timestamp, veh_id, error=False):

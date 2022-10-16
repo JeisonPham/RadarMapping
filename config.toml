@@ -4,7 +4,8 @@ api_key = "KPeUsRqhiz6nAFBQYCx9o8vb1"
 workspace = "jeisontriton"
 
 [train]
-model_location = "Model Output"
+model_location = "../ehdd_8t1/models/Map_Models"
+load_model_location1 = "/ehdd_8t1/models/Map_Models/150 2022_10_14 13-57-34.pt"
 use_resnet = false
 disable=false
 batch_size = 8
@@ -15,10 +16,23 @@ device=1
 car_file = "Data/downtown_SD_10thru_50count_with_cad_id.csv"
 polygon_file = "Data/polygons.json"
 radar_dataset = "../ehdd_8t1/collab_radar_data/"
+time_window = 3
 
 
 
 [train.hyper_params]
-"lr"= 0.001
-"weight_decay"= 0.00001
+"lr"= 1e-3
+"weight_decay"= 5e-5
 "epoch"= 5e5
+momentum=0.9
+
+[test]
+model_location = "../ehdd_8t1/models/Map_Models/0 2022_10_11 20-07-19.pt"
+save_location = "../ehdd_8t1/jason/Map_Output/"
+batch_size = 8
+device = 1
+
+[test.dataset_params]
+car_file = "Data/downtown_SD_10thru_50count_with_cad_id.csv"
+polygon_file = "Data/polygons.json"
+radar_dataset = "../ehdd_8t1/collab_radar_data/"
