@@ -15,7 +15,7 @@ bev_folder_name = "downtown_SD_10thru_50count_80m_doppler_tuned"
 
 
 class MapDataset(torchdata.Dataset):
-    def __init__(self, car_file, polygon_file, radar_dataset="", time_window=1, *args, **kwargs):
+    def __init__(self, car_file, polygon_file, radar_dataset="", time_window=1, isTrain = True, *args, **kwargs):
         self.time_window = time_window
         
         df = pd.read_csv(car_file)
@@ -38,16 +38,16 @@ class MapDataset(torchdata.Dataset):
         
         self.radar_dataset = radar_dataset
         self.collab_dataset = collab_dataset(radar_dataset, gt_folder_name, bev_folder_name)
-        with open(os.path.join(radar_dataset, "training_txt_files", bev_folder_name, "valid_files_train.txt"),
-                  'r') as file:
-            training = file.readlines()
-
-        with open(os.path.join(radar_dataset, "training_txt_files", bev_folder_name, "valid_files_test.txt"),
-                  'r') as file:
-            testing = file.readlines()
-        # training = ["plot_data_veh129_382", "plot_data_veh115_395", "plot_data_veh122_396"]
-        # testing = ["plot_data_veh129_382", "plot_data_veh115_395", "plot_data_veh122_396"]
-        self.radar_data = training + testing
+        
+        if isTrain:
+          with open(os.path.join(radar_dataset, "training_txt_files", bev_folder_name, "valid_files_train.txt"),
+                    'r') as file:
+              self.radar_data = file.readlines()
+        else:
+          with open(os.path.join(radar_dataset, "training_txt_files", bev_folder_name, "valid_files_test.txt"),
+                    'r') as file:
+              self.radar_data = file.readlines()
+              
         self.ixes = self.get_ixes()
         
     def exists(self, name, time):
@@ -56,6 +56,7 @@ class MapDataset(torchdata.Dataset):
             return True
         print(target_path)
         return False
+
 
     def get_ixes(self):
         ixes = []
@@ -170,7 +171,7 @@ class MapDataset(torchdata.Dataset):
 
         # lane_div = np.zeros((self.nx, self.ny))
         # x = np.stack([map_img, lane_div, road_div, obj_img, center_img])
-        return np.stack(images), np.stack([map_img, junction_map, obj_img])
+        return np.stack(images), map_img[np.newaxis, ...]
 
     def __getitem__(self, index):
         name, time = self.ixes[index]

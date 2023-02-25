@@ -47,7 +47,6 @@ class MapBackBone(nn.Module):
         self.avgpool1 = nn.AvgPool2d(3, stride=2, padding=1)
         self.avgpool2 = nn.AvgPool2d(3, stride=2, padding=1)
 
-
     def forward(self, x):
         x1 = self.layer1(x)
         x2 = self.layer2(x1)
@@ -102,6 +101,31 @@ class MappingNetwork(nn.Module):
         return torch.sigmoid(F.interpolate(x8, size=(self.W, self.H)))
 
 
+class LocalizationHeaderNetwork(nn.Module):
+    def __init__(self, output):
+        super(LocalizationHeaderNetwork, self).__init__()
+        self.fc = None
+        self.output = output
+
+    def forward(self, x):
+        x = x.view(x.size(0), -1)
+        if self.fc is None:
+            self.fc = nn.Linear(x.size(1), 2)
+        x = self.fc(F.relu(x))
+        return x
+
+
+class LocalizationModel(nn.Module):
+    def __init__(self):
+        super(LocalizationModel, self).__init__()
+        self.backbone = MapBackBone(2)
+        self.head = LocalizationHeaderNetwork(2)
+
+    def forward(self, x):
+        x, _, _ = self.backbone(x)
+        return self.head(x)
+
+
 class MapModel(nn.Module):
     def __init__(self, cin, cout, H=256, W=256):
         super(MapModel, self).__init__()
@@ -114,8 +138,8 @@ class MapModel(nn.Module):
 
 
 if __name__ == "__main__":
-    x = torch.randn(8, 5, 128, 128)
-    net = MapModel(5, 1)
+    x = torch.randn(8, 2, 256, 256)
+    net = LocalizationModel()
     net.train()
 
     x = net(x)
